@@ -131,8 +131,7 @@ while (loopCount < totalRecords):
                 # Create array of numbers
                 
                 ## Get Id for device to be shared
-                lineIdUrl = f"https://webexapis.com/v1/telephony/config/numbers?phoneNumber={records[loopCount]['number']}"
-                print(lineIdUrl)
+                lineIdUrl = f"https://webexapis.com/v1/telephony/config/numbers?extension={records[loopCount]['number']}"
                 lineIdResponse = requests.get(lineIdUrl, headers={'Authorization': 'Bearer ' + accessToken})
 
                 if lineIdResponse.status_code != 200 or len(lineIdResponse.json()['phoneNumbers']) == 0:
@@ -187,11 +186,19 @@ while (loopCount < totalRecords):
                     payload = json.dumps(tempMember)
                     updateSharedResponse = requests.put(sharedLineUrl, headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken}, data=payload)
                     
-                    # TODO Error Handling
-                    print(updateSharedResponse.status_code)
-                    # Test Printing Data
-                    # print(json.dumps(tempMember, indent=2))
-
-                    
-                
+                    if updateSharedResponse.status_code != 204:
+                    # Error Handling
+                        if updateSharedResponse.status_code != 204:
+                            print('    Error: Adding Shared Line Error', str(updateSharedResponse.status_code), 'on user', str(records[loopCount]['email']))
+                            errorMessage = updateSharedResponse.json()['message']
+                        else:
+                            print(f"    Error: There was a problem adding {records[loopCount]['number']}, {str(records[loopCount]['email'])}")
+                            errorMessage = f"Error adding {records[loopCount]['number']} to {records[loopCount]['email']}"
+                        with open(errorFilePath, 'a') as csvErrFile:
+                            csvErrFile.write(str(records[loopCount]['email']) + ',' + str(updateSharedResponse.status_code) + ',' + errorMessage + '\n')
+                        errorCount += 1
+                    else:
+                        print(f"Number: {records[loopCount]['number']} has been added to {records[loopCount]['email']}")
+    
+    ### Move on to next record
     loopCount += 1
