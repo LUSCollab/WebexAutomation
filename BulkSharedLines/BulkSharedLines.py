@@ -12,8 +12,8 @@ import time
 import datetime
 
 ### Variable Definitions ###
-csvFilePath = 'Test.csv'
-accessToken = 'MjJjNWU2ZDYtMWFmMi00ZTNjLWFmZWItZGViZGQyMDI0OWQ0ODVmMmNlZmMtZjJi_P0A1_e3266292-7ee3-4149-ae94-80a7ae54f891'
+csvFilePath = ''
+accessToken = ''
 orgId = ''
 records = []
 loopCount = 0
