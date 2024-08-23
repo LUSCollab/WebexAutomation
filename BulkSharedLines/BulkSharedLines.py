@@ -7,14 +7,13 @@ import requests
 import pandas as pd
 import json
 import os
-import csv
 import urllib
 import time
 import datetime
 
 ### Variable Definitions ###
-csvFilePath = ''
-accessToken = ''
+csvFilePath = 'Test.csv'
+accessToken = 'MjJjNWU2ZDYtMWFmMi00ZTNjLWFmZWItZGViZGQyMDI0OWQ0ODVmMmNlZmMtZjJi_P0A1_e3266292-7ee3-4149-ae94-80a7ae54f891'
 orgId = ''
 records = []
 loopCount = 0
@@ -22,13 +21,15 @@ errorCount = 0
 userId = ''
 desktopClientId = ''
 lineId = ''
-getMyDetailsURL = 'https://webexapis.com/v1/people/me'
+deviceIds = []
+getMyDetailsUrl = 'https://webexapis.com/v1/people/me'
+orgUrl = 'https://webexapis.com/v1/organizations'
 
 ### User Input ###
 print('You will need the following:')
-print('  1. The full file path for the input CSV file\n       (ex: C:\Path\To\File.csv)')
-print('  2. Webex API access token\n       (You can get this at https://developer.webex.com)')
-print('  3. The OrgId of the target Webex tenant if using a partner account')
+print('  1. The full file path for the input CSV file\n       (ex: C:\\Path\\To\\File.csv on Windows or ~/Scripts/exported_file.csv on Mac)')
+print('  2. Webex API access token\n       (You can get this at https://developer.webex.com)\n')
+# print('  3. The OrgId of the target Webex tenant if using a partner account\n')
 
 ### Validate Access to CSV File ###
 validationSuccess = 0
@@ -37,14 +38,15 @@ while (validationSuccess == 0):
         csvFilePath = input('Please ender the full file path of the CSV file you wish to use:  ')
     csvFilePath = os.path.expanduser(csvFilePath)
     if( not os.path.isfile(csvFilePath) ):
-        print('No Input CSV file found on your device at: ' + csvFilePath)
+        print('❌ No Input CSV file found on your device at: ' + csvFilePath)
         print('Please check the file path you entered above and try again.\n')
         csvFilePath = ''
     else:
         validationSuccess = 1
-print('Input CSV file found at: ', csvFilePath, '\n')
+        
+print('✅ Input CSV file found at: ', csvFilePath, '\n')
 timeStamp = datetime.datetime.now().strftime("%Y_%m_%d-%H%M%S")
-errorFilePath = os.path.join(os.path.dirname(csvFilePath),f"Errors_{timeStamp}.csv")
+errorFilePath = os.path.join(os.path.dirname(csvFilePath),f"Log_{timeStamp}.csv")
 validationSuccess = 0
 
 ### Validate Access Token ###
@@ -52,17 +54,36 @@ while (validationSuccess == 0):
     if not accessToken :
         accessToken = input('Please enter your access token:  ')
     # Get People API Call to validate access token.
-    validationResponse = requests.get(getMyDetailsURL,
+    validationResponse = requests.get(getMyDetailsUrl,
                 headers={'Authorization': 'Bearer ' + accessToken})
     if validationResponse.status_code == 401:
         # This means the access token was invalid.
-        print('Access Token was invalid.  Please check your access token was entered correctly and hasn\'t expired and try again below.\n')
+        print('❌ Access Token was invalid.  Please check your access token was entered correctly and hasn\'t expired and try again below.\n')
         accessToken = ''
     else:
         name = validationResponse.json()['firstName']
         validationSuccess = 1
-print(f"Congrats {name}, your input file and Access Token have validated succesfully.\n")
 
+name = validationResponse.json()['firstName']
+print('✅ Access token has been validated.\n')
+validationSuccess = 0
+
+### Check if using a partner account ###
+# while (validationSuccess == 0):
+#     orgResponse = requests.get(orgUrl, headers={'Authorization': 'Bearer ' + accessToken})
+#     organizations = orgResponse.json()['items']
+
+#     if len(orgResponse.json()['items']) > 1:
+#         orgEntry = input('Looks like you are using a partner account, please enter the target OrgId:  ')
+#         for org in organizations:
+#             if org['id'] == orgEntry:
+#                 found = True
+            
+#         if found:
+#             orgId = orgEntry
+#             validationSuccess = 1
+#         else:
+#             print('Unable to validate OrgId. \n')
 
 ### Read in CSV ###
 # This script assumes that the extensions being added
@@ -106,6 +127,26 @@ while (loopCount < totalRecords):
         ## TODO Handle updates to phone devices
         for user in response.json()['items']:
             userId = user['id']
+            
+            ### Get Device Id(s) for update associated devices
+            devIdUrl = f"https://webexapis.com/v1/devices?personId={userId}"
+            devIdResponse = requests.get(devIdUrl, headers={'Authorization': 'Bearer ' + accessToken})
+
+            while devIdResponse.status_code == 429:
+                time.sleep(30)
+                devIdResponse = requests.get(devIdUrl, headers={'Authorization': 'Bearer ' + accessToken})
+
+            if devIdResponse.status_code != 200 or len(devIdResponse.json()['items']) == 0:
+                if devIdResponse.status_code != 200:
+                    print('    Error: Get deviceId API Call Error', str(devIdResponse.status_code), 'on user', str(records[loopCount]['email']))
+                    errorMessage = devIdResponse.json()['message']
+                else:
+                    print(f"    No devices associated for user {records[loopCount]['email']}")
+            else:
+                for device in devIdResponse.json()['items']:
+                    deviceIds.append({"id": device['id']})
+            
+            ### Get Appliation ID for updating the Webex App devices
             appIdUrl = f"https://webexapis.com/v1/people/{userId}/features/applications"
             appIdResponse = requests.get(appIdUrl, headers={'Authorization': 'Bearer ' + accessToken})
 
@@ -149,15 +190,69 @@ while (loopCount < totalRecords):
                     # Set Line Id
                     lineId = lineIdResponse.json()['phoneNumbers'][0]['owner']['id']
                     
+                    ### Handle any devices assigned to the user ###
+                    if len(deviceIds) > 0:
+                        for device in deviceIds:
+                            devSharedLineUrl = f"https://webexapis.com/v1/telephony/config/devices/{device['id']}/members"
+                            devMemberResponse = requests.get(devSharedLineUrl, headers={'Authorization': 'Bearer ' + accessToken})
+                            devMembers = devMemberResponse.json()['members']
+                            memberList = {
+                                "members": []
+                            }
+
+                            j = 0
+                            for devMember in devMembers:
+                                temp = {
+                                    "id": devMember['id'],
+                                    "primaryOwner": devMember['primaryOwner'],
+                                    "port": devMember['port'],
+                                    "lineType": devMember['lineType'],
+                                    "lineWeight": 1,
+                                    "hotlineEnabled": devMember['hotlineEnabled'],
+                                    "allowCallDeclineEnabled": devMember['allowCallDeclineEnabled']
+                                }
+                                memberList['members'].append(temp)
+                                j += 1
+                            
+                            newMember = {
+                                "id": lineId,
+                                "primaryOwner": False,
+                                "port": j+1,
+                                "lineType": "SHARED_CALL_APPEARANCE",
+                                "lineWeight": 1,
+                                "hotlineEnabled": False,
+                                "allowCallDeclineEnabled": True
+                            }
+                            memberList['members'].append(newMember)
+                            devPayload = json.dumps(memberList)
+                            updateDevharedResponse = requests.put(devSharedLineUrl, headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken}, data=devPayload)
+
+                            if updateDevharedResponse.status_code != 204:
+                            # Error Handling
+                                if updateDevharedResponse.status_code != 204:
+                                    print('    Error: Adding Shared Line to Device Error', str(updateDevharedResponse.status_code), 'on user', str(records[loopCount]['email']))
+                                    errorMessage = updateDevharedResponse.json()['message']
+                                else:
+                                    print(f"    Error: There was a problem adding {records[loopCount]['number']}, {str(records[loopCount]['email'])}")
+                                    errorMessage = f"Error adding {records[loopCount]['number']} to {records[loopCount]['email']}"
+                                with open(errorFilePath, 'a') as csvErrFile:
+                                    csvErrFile.write(str(records[loopCount]['email']) + ',' + str(updateDevharedResponse.status_code) + ',' + errorMessage + '\n')
+                                errorCount += 1
+                            else:
+                                print(f"Device: {records[loopCount]['number']} has been added to {records[loopCount]['email']}")
+                    ### Reset Device Id List
+                    deviceIds = []
+
+
                     tempMember = {
                         "members": []
                     }
-                    sharedLineUrl = f"https://webexapis.com/v1/telephony/config/people/{userId}/applications/{desktopClientId}/members"
-                    memberResponse = requests.get(sharedLineUrl, headers={'Authorization': 'Bearer ' + accessToken})
+                    appSharedLineUrl = f"https://webexapis.com/v1/telephony/config/people/{userId}/applications/{desktopClientId}/members"
+                    appMemberResponse = requests.get(appSharedLineUrl, headers={'Authorization': 'Bearer ' + accessToken})
 
                     ## TODO Add Error Handling
                     i = 0
-                    membersList = memberResponse.json()['members']
+                    membersList = appMemberResponse.json()['members']
                     # print(membersList['members'])
                     for member in membersList:
                         temp = {
@@ -184,21 +279,21 @@ while (loopCount < totalRecords):
                     tempMember['members'].append(temp)
 
                     payload = json.dumps(tempMember)
-                    updateSharedResponse = requests.put(sharedLineUrl, headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken}, data=payload)
+                    updateAppSharedResponse = requests.put(appSharedLineUrl, headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken}, data=payload)
                     
-                    if updateSharedResponse.status_code != 204:
+                    if updateAppSharedResponse.status_code != 204:
                     # Error Handling
-                        if updateSharedResponse.status_code != 204:
-                            print('    Error: Adding Shared Line Error', str(updateSharedResponse.status_code), 'on user', str(records[loopCount]['email']))
-                            errorMessage = updateSharedResponse.json()['message']
+                        if updateAppSharedResponse.status_code != 204:
+                            print('    Error: Adding Shared Line Error', str(updateAppSharedResponse.status_code), 'on user', str(records[loopCount]['email']))
+                            errorMessage = updateAppSharedResponse.json()['message']
                         else:
                             print(f"    Error: There was a problem adding {records[loopCount]['number']}, {str(records[loopCount]['email'])}")
                             errorMessage = f"Error adding {records[loopCount]['number']} to {records[loopCount]['email']}"
                         with open(errorFilePath, 'a') as csvErrFile:
-                            csvErrFile.write(str(records[loopCount]['email']) + ',' + str(updateSharedResponse.status_code) + ',' + errorMessage + '\n')
+                            csvErrFile.write(str(records[loopCount]['email']) + ',' + str(updateAppSharedResponse.status_code) + ',' + errorMessage + '\n')
                         errorCount += 1
                     else:
-                        print(f"Number: {records[loopCount]['number']} has been added to {records[loopCount]['email']}")
+                        print(f"WebexApp: {records[loopCount]['number']} has been added to {records[loopCount]['email']}")
     
     ### Move on to next record
     loopCount += 1
