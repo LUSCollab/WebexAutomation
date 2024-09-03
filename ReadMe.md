@@ -32,8 +32,4 @@ You can grab your token [here](https://developer.webex.com/docs/getting-started)
 # Known Issues
 Refer [here](https://github.com/LUSCollab/WebexAutomation/issues) for issue tracking.
 # Getting Help
-<<<<<<< HEAD
 If you have any questions, concerns, bug reports, etc., please create an issue against this repository.
-=======
-If you have any questions, concerns, bug reports, etc., please create an issue against this repository.
->>>>>>> 0f3d112 (Added User and Workspace provisioning)
