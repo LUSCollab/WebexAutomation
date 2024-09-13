@@ -4,6 +4,9 @@
 | -------- | ------------------ | -------- | ------------------------------------------------------ |
 | General  | BulkDeleteUsers.py | Python   | Script to bulk delete users from Control Hub           |
 | Calling  | BulkSharedLines.py | Python   | Script to bulk assign shared lines to user's Webex App |
+| Calling  | HuntGroupProvisioning.py | Python | Script will bulk provision hunt groups and members |
+| Calling  | UserProvisioning.py | Python | Script will provision users and assigned DID/Extension  |
+| Calling  | WorkspaceProvisioining.py | Python | Script will provision workspaces and DID/Extension |
 
 # Getting Started
 ### How to get your Webex Access Token
